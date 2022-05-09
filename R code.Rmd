@@ -1,11 +1,10 @@
 ---
-title: "Untitled"
+title: "Database creation"
 output: html_document
 date: '2022-03-29'
 ---
 
 
-```{r}
 library(haven)
 library(tidyverse)
 library(broom)
@@ -18,12 +17,11 @@ library(tidyr)
 
 
 
-```
 
 
-# Data in longer format
 
-```{r}
+# Filtering the IDB master data file to be compatible to the OECD database
+
 IDB <- read.csv("~/Desktop/Analytical work PSE obesity/Data/Agrimonitor/IDB_Agrimonitor_-_PSE_Agricultural_Policy_Monitoring_System__data_.csv")%>%mutate(country=ifelse(country=="BELIZE","Belize",ifelse(country=="DOMINICAN REPUBLIC","Dominican Republic",ifelse(country=="BARBADOS","Barbados",ifelse(country=="GUYANA","Guyana",ifelse(country=="HONDURAS","Honduras",ifelse(country=="JAMAICA","Jamaica",ifelse(country=="NICARAGUA","Nicaragua",ifelse(country=="PANAMA","Panama",ifelse(country=="GUATEMALA","Guatemala",ifelse(country=="BOLIVIA","Bolivia",ifelse(country=="EL SALVADOR","El Salvador",ifelse(country=="SURINAME","Suriname",ifelse(country=="URUGUAY","Uruguay",ifelse(country=="PARAGUAY","Paraguay",ifelse(country=="ECUADOR","Ecuador",ifelse(country=="HAITI","Haiti",ifelse(country=="BAHAMAS","Bahamas",ifelse(country=="TRINIDAD AND TOBAGO","Trinidad and Tobago",ifelse(country=="PERU","Peru",country))))))))))))))))))))
 
 idb_clean_longer<-IDB%>%select(country,description,Commoditie,year,value,unit)%>%filter(Commoditie=="Refined Sugar"|Commoditie=="Beef and Veal"|Commoditie=="Sheep Meat"|Commoditie=="Pigmeat"|Commoditie=="Poultry Meat")%>%mutate(Commoditie=
@@ -74,6 +72,8 @@ idb_clean_longer<-idb_clean_longer%>%rename(sct=description)%>%mutate(category=
 
 
 #OECD data
+#Renaming the variable names for clarity
+
 PSCT_oecd_longer <- read_csv("~/Desktop/Analytical work PSE obesity/Data/PSCT_oecd_all.csv")%>%rename(sct=Sct)%>%mutate(sct=ifelse(sct=="B2.  Fixed capital formation","Fixed capital formation",
                                                                                                     ifelse(sct=="B3.  On-farm services","On-farm services",
                                                                                                            ifelse(sct=="B.  Payments based on input use","Payments based on input use",
@@ -91,12 +91,9 @@ PSCT_oecd_longer <- read_csv("~/Desktop/Analytical work PSE obesity/Data/PSCT_oe
                                                                                                                                               ifelse(sct=="Market price support","A1","")))))))))%>%select(Country,Commodity,sct,7:41)%>%group_by(Country,Commodity)%>%pivot_longer(4:38,names_to = "Year",values_to = "value")%>%mutate(Year=as.numeric(Year))
 #%>%pivot_wider(names_from = sct,values_from = value,values_fill = NA )%>%select(Country,Commodity,Year,`Level of production`,`Value of production (at farm gate)`,`Support based on commodity outputs`,`Market price support`,`Payments based on output`,`Payments based on input use`,`Variable input use`,`Fixed capital formation`,`On-farm services`,`Payments based on current A/An/R/I, production required, single commodity`,`Payments based on non-current A/An/R/I, production required`,PSCT,`%PSCT`)%>%ungroup()
 
-```
 
 
-```{r}
-
-
+#Merging the OECD and IDB databases
 data_longer<-rbind(PSCT_oecd_longer,idb_clean_longer)%>%pivot_wider(names_from = sct,values_from = value)%>%select(Country,Commodity,Year,`Level of production`,`Value of production (at farm gate)`,`Support based on commodity outputs`,`Market price support`,`Payments based on output`,`Payments based on input use`,`Variable input use`,`Fixed capital formation`,`On-farm services`,`Payments based on current A/An/R/I, production required, single commodity`,`Payments based on non-current A/An/R/I, production required`,PSCT,`%PSCT`)%>%ungroup()
 
 rep_dom<-data_longer%>%filter(Country=="Dominican Republic")
@@ -106,27 +103,22 @@ rep_dom<-data_longer%>%filter(Country=="Dominican Republic")
 blog<-data_longer%>%filter(Commodity=="Sugar")%>%filter(Year=="2016"|Year=="2017"|Year=="2018"|Year=="2019")%>%select(Country,Year,Commodity,`%PSCT`)
 
 
-```
-
-#Making aggregate "MEAT variable"
-
-```{r}
-
+#Making aggregate "MEAT variable" to be compatible with GDD data
 #Making dataset combining beef,sheep and poultry
 #Important modifications:
 #Inferred GFR from %PSCT and PSCT
 #If Value was NA for a commodity (a country most likely was not producing it) we attributed number 0 for computations
+
 data_meat<-rbind(PSCT_oecd_longer,idb_clean_longer)%>%pivot_wider(names_from = sct,values_from = value)%>%mutate(`Gross farm receipts`=PSCT/`%PSCT`)%>%pivot_longer(!c(Country,Year,Commodity),names_to = "sct",values_to = "value" )%>%pivot_wider(names_from = Commodity,values_from = value)%>%ungroup()%>%select(-c(`Pig meat`))%>%mutate(na_sheep=is.na(`Sheep meat`))%>%mutate(`Sheep meat`=ifelse(na_sheep=="TRUE",0,`Sheep meat`))%>%mutate(na_poultry=is.na(`Poultry meat`))%>%mutate(`Poultry meat`=ifelse(na_poultry=="TRUE",0,`Poultry meat`))%>%mutate(na_beef=is.na(`Beef and veal`))%>%mutate(`Beef and veal`=ifelse(na_beef=="TRUE",0,`Beef and veal`))%>%mutate(Meat=`Beef and veal`+`Poultry meat`+`Sheep meat`)%>%select(-c(na_sheep,na_poultry,na_beef))%>%pivot_longer(!c(Country,Year,sct),names_to = "Commodity",values_to = "value" )%>%filter(!(sct=="Level of production"|sct=="%PSCT"))%>%pivot_wider(names_from = sct,values_from = value)%>% select(Country,Commodity,Year,`Value of production (at farm gate)`,`Support based on commodity outputs`,`Market price support`,`Payments based on output`,`Payments based on input use`,`Variable input use`,`Fixed capital formation`,`On-farm services`,`Payments based on current A/An/R/I, production required, single commodity`,`Payments based on non-current A/An/R/I, production required`,`Gross farm receipts`,PSCT)%>%mutate(`%PSCT`=PSCT/`Gross farm receipts`)%>%filter(Commodity=="Sugar"|Commodity=="Meat")
 
 #write_xlsx(data_meat,"~/Desktop/Analytical work PSE obesity/Data/data_OECD_AGRIMON_meat.xlsx")
 
-```
+
 
 #Creating data set with every country and variables mentioned in presentation
+##1 How many countries for which do we have estimates on for our commodities
 
-#1 How many countries for which do we have estimates on for our commodities
 
-```{r}
 countries_sug<-as.data.frame(unique(data_longer$Country[data_longer$Commodity=="Sugar"]))
 #32
 
@@ -141,12 +133,12 @@ countries_pm<-as.data.frame(unique(data_longer$Country[data_longer$Commodity=="P
 
 countries_pig<-as.data.frame(unique(data_longer$Country[data_longer$Commodity=="Pig meat"]))
 #36
-```
+
 
 
 #Finding relationship between total subsidies and Ag subsidies
 ##Subsidies for OECD_agrimon data and correlation graphs
-```{r}
+
 
 library(ggcorrplot)
 library(plm)
@@ -217,16 +209,14 @@ ggplot(pse_test,aes(y=correlation_tse, x=reorder(Country,-correlation_tse)))+geo
 
 
 
-```
 
 
 ##Graphs for Sugar and Beef/Meat overtime
-```{r}
 library(foreign)
 library(gplots)
 library(car)
 
-
+#Note: After using this algorithm, it is necessary to detach(plyr) or else the code does not run due to conflicts with plyr
 data_summary <- function(data, varname, groupnames){
   require(plyr)
   summary_func <- function(x, col){
@@ -364,12 +354,10 @@ ggplot(data=sub_data_bv_4, aes(x=Year,y=`%PSCT`)) +
   theme(axis.text.x = element_text(angle=90)) 
 
 
-```
 
-
-#WTO data +Subsidies data  to reproduce findings
+#WTO data +Subsidies data  to reproduce findings from Abay
 ## OECD-Agrimon countries
-```{r}
+
 wto_data <- read_csv("~/Desktop/Analytical work PSE obesity/Tariff data/wto_data.csv")
 wto_data_1<-wto_data%>%select(`Reporting Economy`,`Reporting Economy ISO3A Code` ,`Product/Sector`,Year,Value)%>%filter(`Product/Sector`=="Sugars and confectionery"|`Product/Sector`=="Animal products"|`Product/Sector`=="Dairy products"|`Product/Sector`=="Fruits, vegetables, plants"|`Product/Sector`=="Cereals and preparations"|`Product/Sector`=="Oilseeds, fats and oils"|`Product/Sector`=="Fish and fish products")%>%pivot_wider(names_from = `Product/Sector`, values_from=Value )%>%group_by(`Reporting Economy`,Year)%>%mutate(`Food items`=sum(`Sugars and confectionery`,`Animal products`, `Dairy products`,`Fruits, vegetables, plants`,`Cereals and preparations`,`Oilseeds, fats and oils`,`Fish and fish products`)/7)%>%pivot_longer(4:11,names_to = "Products",values_to = "Tariffs")%>% filter(Year>2004 & Year<2017)%>%group_by(`Reporting Economy`)%>%filter(`Reporting Economy`=="Australia"|`Reporting Economy`=="Belize"|`Reporting Economy`=="Chile"|`Reporting Economy`=="Colombia"|`Reporting Economy`=="Costa Rica"|`Reporting Economy`=="Dominican Republic"|`Reporting Economy`=="Philippines"|`Reporting Economy`=="Russian Federation"|`Reporting Economy`=="South Africa"|`Reporting Economy`=="Switzerland"|`Reporting Economy`=="Ukraine"|`Reporting Economy`=="Viet Nam"|`Reporting Economy`=="Barbados"|`Reporting Economy`=="Guyana"|`Reporting Economy`=="Honduras"|`Reporting Economy`=="Jamaica"|`Reporting Economy`=="Nicaragua"|`Reporting Economy`=="Panama"|`Reporting Economy`=="Bolivia, Plurinational State of"|`Reporting Economy`=="Brazil"|`Reporting Economy`=="China"|`Reporting Economy`=="European Union"|`Reporting Economy`=="Guatemala"|`Reporting Economy`=="India"|`Reporting Economy`=="Indonesia"|`Reporting Economy`=="Japan"|`Reporting Economy`=="Mexico"|`Reporting Economy`=="Peru"|`Reporting Economy`=="Turkey"|`Reporting Economy`=="United States of America"|`Reporting Economy`=="European Union"|`Reporting Economy`=="El Salvador")%>%pivot_wider(names_from =Products, values_from=Tariffs)%>%rename(Country=`Reporting Economy`)%>%select(Country,Year,4:11)%>%mutate(Country=ifelse(Country=="Russian Federation","Russia",ifelse(Country=="Viet Nam","Vietnam",ifelse(Country=="Bolivia, Plurinational State of","Bolivia",ifelse(Country=="United States of America","United States",Country)))))
 
@@ -389,11 +377,9 @@ ggplot(wto_data_1,aes(x=Year,y=`Food items`)) +
   theme(axis.text.x = element_text(angle=90)) 
 
 
-```
 
 
 ##Abbay countries
-```{r}
 subsidies_abbay<-read_csv("~/Desktop/Analytical work PSE obesity/Data/Data subsidies/Abbay subsidy/Abay subsidy.csv")%>%slice(1:45)%>%select(!(2))%>%select(!(2:3))%>%rename(`2005`=`2005 [YR2005]`)%>%rename(`2006`=`2006 [YR2006]`)%>%rename(`2007`=`2007 [YR2007]`)%>%rename(`2008`=`2008 [YR2008]`)%>%rename(`2009`=`2009 [YR2009]`)%>%
  rename(`2010`=`2010 [YR2010]`)%>%rename(`2011`=`2011 [YR2011]`)%>%
  rename(`2012`=`2012 [YR2012]`)%>%rename(`2013`=`2013 [YR2013]`)%>%rename(`2014`=`2014 [YR2014]`)%>%rename(`2015`=`2015 [YR2015]`)%>%rename(`2016`=`2016 [YR2016]`)%>%rename(`2017`=`2017 [YR2017]`)%>%rename(`2018`=`2018 [YR2018]`)%>%pivot_longer(!`Country Name`, names_to= "Year", values_to= "subsidies (%)")%>%rename(Country=`Country Name`)%>%drop_na()
@@ -406,5 +392,4 @@ wto_try<-wto_abay%>%group_by(Country)%>%summarise(sugar=mean(`Sugars and confect
  Abbay_repro<-merge(subsidies_abbay,wto_abay,by=c("Country","Year"))
 write_xlsx(Abbay_repro,"~/Desktop/Analytical work PSE obesity/Tariff data/wto_and_subsidies_reproduction.xlsx")
 
-```
 
