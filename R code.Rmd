@@ -18,6 +18,7 @@ library(tidyselect)
 library(foreign)
 library(gplots)
 library(car)
+library(splines)
 
 ```
 
@@ -143,7 +144,7 @@ data_summary <- function(data, varname, groupnames){
  return(data_sum)
 }
 
-
+detach(package:plyr)
 #heterogeneity across countries for sugar
 
 sub_data<-data_longer%>%filter(Commodity=="Sugar")
