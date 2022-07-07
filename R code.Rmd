@@ -298,32 +298,42 @@ pse_idb<-IDB%>%select(country, Parent1Name,Parent2Name,description,Commoditie,ye
 
 idb_supp<-merge(tse_idb,pse_idb, by=c("Country","Year"))
 
-supp<-rbind(oecd_supp,idb_supp)
 
+supp<-rbind(oecd_supp,idb_supp)
+psct_subs<-data_meat%>%filter(Commodity=="Sugar")%>%select(Country,Year,PSCT)
+
+supp_all<-merge(supp,psct_subs,by=c("Country","Year"))
 
 
 
 #dup<-pse_idb%>%select(country,description,year)%>%mutate(obs=1)%>%group_by(country,description,year)%>%summarise(obs=sum(obs))%>%filter(obs>1)
 
+pse_subsidy<-merge(subsidies,supp_all,by=c("Country","Year"))
 
-pse_subsidy<-merge(subsidies,supp,by=c("Country","Year"))
 
 #data without country or time dimension for the correlation coefficient
-pse_subs<-pse_subsidy%>%mutate(`%PSE(total spending)`=(`Producer Support Estimate (PSE)`*100)/tot_spending)%>%mutate(`%TSE(total spending)`=(`Total Support Estimate (TSE)`)/tot_spending)%>%select(`subsidies (%)`,`%PSE(total spending)`,`%TSE(total spending)`)
+pse_subs<-pse_subsidy%>%mutate(`%PSE(total spending)`=(`Producer Support Estimate (PSE)`*100)/tot_spending)%>%mutate(`%TSE(total spending)`=(`Total Support Estimate (TSE)`)/tot_spending)%>%mutate(`%PSCT(total spending)`=(`PSCT`)/tot_spending)%>%select(`subsidies (%)`,`%PSE(total spending)`,`%TSE(total spending)`,`%PSCT(total spending)`)
 
 
-pse_subsidy_1<-pse_subsidy%>%filter(!(Country=="Bolivia"|Country=="Panama"))%>%mutate(`%PSE(total spending)`=(`Producer Support Estimate (PSE)`*100)/tot_spending)%>%mutate(`%TSE(total spending)`=(`Total Support Estimate (TSE)`*100)/tot_spending)%>%group_by(Country)%>%mutate(correlation_dol=cor(`subsidies ($)`,`Producer Support Estimate (PSE)`))%>%mutate(correlation_pse=cor(`%PSE(total spending)`,`subsidies (%)`))%>%mutate(correlation_tse=cor(`%TSE(total spending)`,`subsidies (%)`))%>%mutate(p_val_pse=cor.test(`%PSE(total spending)`,`subsidies (%)`,use = "complete.obs" )$p.value)%>%mutate(p_val_tse=cor.test(`%TSE(total spending)`,`subsidies (%)`,use = "complete.obs" )$p.value)
-pse_test<-pse_subsidy_1 %>%select(Country,10:14)%>%mutate(p_val_pse=round(p_val_pse,digits=3))%>%mutate(p_val_tse=round(p_val_tse,digits=3))%>%unique()
 
-corr <- round(cor(pse_subs,use = "complete.obs" ), digits=3)
-cor_tab<-tidy(head(corr[, 1:3]))
+pse_subsidy_1<-pse_subsidy%>%filter(!(Country=="Bolivia"|Country=="Panama"))%>%mutate(`%PSE(total spending)`=(`Producer Support Estimate (PSE)`*100)/tot_spending)%>%mutate(`%TSE(total spending)`=(`Total Support Estimate (TSE)`*100)/tot_spending)%>%mutate(`%PSCT(total spending)`=(`PSCT`*100)/tot_spending)%>%group_by(Country)%>%mutate(correlation_dol=cor(`subsidies ($)`,`Producer Support Estimate (PSE)`,use = "complete.obs" ))%>%mutate(correlation_pse=cor(`%PSE(total spending)`,`subsidies (%)`,use = "complete.obs" ))%>%mutate(correlation_tse=cor(`%TSE(total spending)`,`subsidies (%)`))%>%mutate(correlation_psct=cor(`%PSCT(total spending)`,`subsidies (%)`,use = "pairwise.complete.obs"))%>%mutate(p_val_pse=cor.test(`%PSE(total spending)`,`subsidies (%)`)$p.value)%>%mutate(p_val_tse=cor.test(`%TSE(total spending)`,`subsidies (%)`)$p.value)
+
+pse_subsidy_2<-pse_subsidy_1%>%drop_na(`%PSCT(total spending)`)%>%mutate(p_val_psct=cor.test(`%PSCT(total spending)`,`subsidies (%)` )$p.value)%>%mutate(p_val_psct=round(p_val_psct,digits=3))%>%unique()
+
+pse_test<-pse_subsidy_1 %>%select(Country,everything())%>%mutate(p_val_pse=round(p_val_pse,digits=3))%>%mutate(p_val_tse=round(p_val_tse,digits=3))%>%unique()
+
+
+
+
+corr <- round(cor(pse_subs,use = "pairwise.complete.obs"),digits=3)
+cor_tab<-tidy(head(corr[, 1:4]))
 #Value found in this tables is without regards for country or year, it looks at correlation between susbsidies and PSE and TSE
 corrp.mat <- cor_pmat(pse_subs)
-p_val<-tidy(head(round(corrp.mat[, 1:3],digits=4)))
+p_val<-tidy(head(round(corrp.mat[, 1:4],digits=4)))
 
 #Correlogram
 ggcorrplot(corr, hc.order =TRUE, 
-           type ="lower", p.mat = corrp.mat, insig="blank", method="circle", lab= TRUE,title="Correlogram of PSE,TSE, Susbidies", 
+           type ="lower", p.mat = corrp.mat, insig="blank", method="circle", lab= TRUE,title="Correlogram of PSE,TSE,PSCT,Susbidies", 
            ggtheme=theme_bw)
 
 
@@ -331,11 +341,14 @@ ggcorrplot(corr, hc.order =TRUE,
 
 #note: Bolivia, Panama and EU not included, the first two because of lack of datapoint and EU because of lack of subsidy amount
 #note: The %TSE and %PSE were computed by infering total government expenditure using the variables present in the WDI
-ggplot(pse_test,aes(y=correlation_pse, x=reorder(Country,-correlation_pse)))+geom_point(col=ifelse(pse_test$p_val_pse> 0.05,"#ff0000","#27db6a"))+theme_bw()+theme(text = element_text(size=8),axis.text.x = element_text(angle = 90, vjust = 1, hjust=1), axis.text.y =element_text(margin = margin(r = 0)),legend.title = element_blank())+xlab("")+ylab("Correlation Coefficient")+ggtitle(label = "Correlation between PSE and Total subsidiies as a share of government expenditure")+ geom_text(label=pse_test$p_val_pse,nudge_y = 0.05,check_overlap = T,size=2
+ggplot(pse_test,aes(y=correlation_pse, x=reorder(Country,-correlation_pse)))+geom_point(col=ifelse(pse_test$p_val_pse> 0.05,"#ff0000","#27db6a"))+theme_bw()+theme(text = element_text(size=8),axis.text.x = element_text(angle = 90, vjust = 1, hjust=1), axis.text.y =element_text(margin = margin(r = 0)),legend.title = element_blank())+xlab("")+ylab("Correlation Coefficient")+ggtitle(label = "Correlation between PSE and Total subsidies as a share of government expenditure")+ geom_text(label=pse_test$p_val_pse,nudge_y = 0.05,check_overlap = T,size=2
 )
 
 
-ggplot(pse_test,aes(y=correlation_tse, x=reorder(Country,-correlation_tse)))+geom_point(col=ifelse(pse_test$p_val_tse> 0.05,"#ff0000","#27db6a"))+theme_bw()+theme(text = element_text(size=8),axis.text.x = element_text(angle = 90, vjust = 1, hjust=1), axis.text.y =element_text(margin = margin(r = 0)),legend.title = element_blank())+xlab("")+ylab("Correlation Coefficient")+ggtitle(label = "Correlation between TSE and Total subsidiies as a share of government expenditure")+ geom_text(label=pse_test$p_val_tse,nudge_y = 0.05,check_overlap = T,size=2
+ggplot(pse_test,aes(y=correlation_tse, x=reorder(Country,-correlation_tse)))+geom_point(col=ifelse(pse_test$p_val_tse> 0.05,"#ff0000","#27db6a"))+theme_bw()+theme(text = element_text(size=8),axis.text.x = element_text(angle = 90, vjust = 1, hjust=1), axis.text.y =element_text(margin = margin(r = 0)),legend.title = element_blank())+xlab("")+ylab("Correlation Coefficient")+ggtitle(label = "Correlation between TSE and Total subsidies as a share of government expenditure")+ geom_text(label=pse_test$p_val_tse,nudge_y = 0.05,check_overlap = T,size=2
+)
+
+ggplot(pse_subsidy_2,aes(y=correlation_psct, x=reorder(Country,-correlation_psct)))+geom_point(col=ifelse(pse_subsidy_2$p_val_psct> 0.05,"#ff0000","#27db6a"))+theme_bw()+theme(text = element_text(size=8),axis.text.x = element_text(angle = 90, vjust = 1, hjust=1), axis.text.y =element_text(margin = margin(r = 0)),legend.title = element_blank())+xlab("")+ylab("Correlation Coefficient")+ggtitle(label = "Correlation between Sugar PSCT and Total subsidies as a share of government expenditure")+ geom_text(label=pse_subsidy_2$p_val_psct,nudge_y = 0.05,check_overlap = T,size=2
 )
 
 
